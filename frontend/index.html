@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Image Forensics - Image Authenticity Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="navbar">
+            <div class="brand">
+                <h1>DIGITAL IMAGE FORENSICS</h1>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="analyzer-grid">
+                <div class="viewport-card panel">
+                    <div class="card-header">
+                        <h3>IMAGE ANALYZER</h3>
+                        <div class="sample-actions">
+                            <button class="btn btn-sm btn-outline" id="load-authentic-btn">Genuine Photo</button>
+                            <button class="btn btn-sm btn-outline" id="load-forged-btn">Forged Photo</button>
+                        </div>
+                    </div>
+
+                    <div class="dropzone" id="image-dropzone">
+                        <input type="file" id="file-input" accept="image/*" class="file-input-hidden">
+                        <div class="dropzone-empty" id="dropzone-empty-state">
+                            <div class="upload-icon">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                </svg>
+                            </div>
+                            <p class="drop-title">UPLOAD IMAGE</p>
+                            <p class="drop-subtitle">Drag & drop an image here or browse</p>
+                            <button class="btn btn-primary"
+                                onclick="document.getElementById('file-input').click()">Browse Files</button>
+                        </div>
+
+                        <div class="dropzone-preview hidden" id="dropzone-preview-state">
+                            <div class="image-wrapper">
+                                <img id="preview-image" src="" alt="Selected image">
+                            </div>
+                            <div class="view-mode-bar">
+                                <button class="view-mode-btn active" data-mode="original">Original</button>
+                                <button class="view-mode-btn" data-mode="ela">ELA Map</button>
+                                <button class="view-mode-btn" data-mode="heatmap">Overlay Heatmap</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analyze-action-bar">
+                        <button class="btn btn-action btn-lg" id="analyze-btn" disabled>
+                            ANALYZE IMAGE AUTHENTICITY
+                        </button>
+                    </div>
+                </div>
+
+                <div class="results-card panel">
+                    <div class="card-header">
+                        <h3>FORENSIC ANALYSIS RESULT</h3>
+                    </div>
+
+                    <div class="results-body" id="results-placeholder">
+                        <div class="empty-results-state">
+                            <p class="empty-title">READY FOR ANALYSIS</p>
+                            <p class="empty-desc">Upload an image and analyze it.</p>
+                        </div>
+                    </div>
+
+                    <div class="results-body hidden" id="results-active-state">
+                        <div class="verdict-banner" id="verdict-banner">
+                            <div class="verdict-badge" id="verdict-badge">AUTHENTIC</div>
+                        </div>
+
+                        <div class="confidence-section">
+                            <span class="section-label">CONFIDENCE</span>
+                            <div class="confidence-value" id="confidence-value">0.0%</div>
+                        </div>
+
+                        <div class="prob-section">
+                            <span class="section-label">CLASSIFICATION PROBABILITY</span>
+
+                            <div class="prob-bar-container">
+                                <div class="prob-info">
+                                    <span>Authentic / Genuine</span>
+                                    <strong id="prob-genuine-text">0.0%</strong>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill genuine-fill" id="prob-genuine-fill"
+                                        style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <div class="prob-bar-container">
+                                <div class="prob-info">
+                                    <span>Forged / Altered</span>
+                                    <strong id="prob-forged-text">0.0%</strong>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill forged-fill" id="prob-forged-fill"
+                                        style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="forensic-meta-section">
+                            <span class="section-label">TECHNICAL INFORMATION</span>
+                            <div class="forensic-meta-grid">
+                                <div class="meta-card">
+                                    <span class="meta-label">Model</span>
+                                    <strong class="meta-value">DenseNet-121</strong>
+                                </div>
+                                <div class="meta-card">
+                                    <span class="meta-label">Input Size</span>
+                                    <strong class="meta-value">224 × 224</strong>
+                                </div>
+                                <div class="meta-card">
+                                    <span class="meta-label">Image Resolution</span>
+                                    <strong class="meta-value" id="meta-resolution">--</strong>
+                                </div>
+                                <div class="meta-card">
+                                    <span class="meta-label">ELA Analysis</span>
+                                    <strong class="meta-value">Available</strong>
+                                </div>
+                                <div class="meta-card meta-card-full">
+                                    <span class="meta-label">ELA Discrepancy</span>
+                                    <strong class="meta-value" id="meta-ela-noise">--</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
