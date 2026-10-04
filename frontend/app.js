@@ -76,28 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setViewMode('original');
     }
 
-    const loadAuthenticBtn = document.getElementById('load-authentic-btn');
-    const loadForgedBtn = document.getElementById('load-forged-btn');
 
-    if (loadAuthenticBtn) loadAuthenticBtn.addEventListener('click', () => loadSample('authentic'));
-    if (loadForgedBtn) loadForgedBtn.addEventListener('click', () => loadSample('forged'));
-
-    async function loadSample(type) {
-        try {
-            const res = await fetch(`${API_BASE}/samples/${type}`);
-            const data = await res.json();
-            if (data.image_base64) {
-                currentImageFile = null;
-                currentImageBase64 = data.image_base64;
-                displayImagePreview(currentImageBase64);
-                analyzeBtn.disabled = false;
-                resetResults();
-            }
-        } catch (err) {
-            console.error('Failed to load sample image:', err);
-            alert('Failed to load sample. Ensure backend is running.');
-        }
-    }
 
     const viewModeBtns = document.querySelectorAll('.view-mode-btn');
     viewModeBtns.forEach(btn => {

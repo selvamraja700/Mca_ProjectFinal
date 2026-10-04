@@ -12,8 +12,6 @@ from model import get_model, ImprovedDenseNet
 from preprocessing import preprocess_image_bytes, compute_ela, generate_heatmap_overlay
 from utils import (
     PAPER_METRICS,
-    create_demo_authentic_image,
-    create_demo_forged_image,
     pil_to_base64
 )
 
@@ -143,26 +141,6 @@ def get_benchmarks():
     return jsonify(PAPER_METRICS)
 
 
-@app.route('/api/samples/<sample_type>', methods=['GET'])
-def get_sample(sample_type):
-    if sample_type == 'authentic':
-        img_bytes = create_demo_authentic_image()
-        b64_str = base64.b64encode(img_bytes).decode('utf-8')
-        return jsonify({
-            "type": "authentic",
-            "name": "authentic_landscape.jpg",
-            "image_base64": f"data:image/jpeg;base64,{b64_str}"
-        })
-    elif sample_type == 'forged':
-        img_bytes = create_demo_forged_image()
-        b64_str = base64.b64encode(img_bytes).decode('utf-8')
-        return jsonify({
-            "type": "forged",
-            "name": "copy_move_forged.jpg",
-            "image_base64": f"data:image/jpeg;base64,{b64_str}"
-        })
-    else:
-        return jsonify({"error": "Invalid sample type"}), 400
 
 
 @app.route('/api/export_report', methods=['POST'])
