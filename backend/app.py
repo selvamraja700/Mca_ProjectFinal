@@ -8,12 +8,12 @@ import torch
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 
-from model import get_model, ImprovedDenseNet
-from preprocessing import preprocess_image_bytes, compute_ela, generate_heatmap_overlay
-from utils import (
-    PAPER_METRICS,
-    pil_to_base64
-)
+from config.settings import PAPER_METRICS
+from inference.predictor import predict_image
+from utils.image_utils import pil_to_base64
+from models import get_model, ImprovedDenseNet
+from preprocessing.image_loader import preprocess_image_bytes
+from preprocessing.ela import compute_ela, generate_heatmap_overlay
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', 'frontend'))
@@ -28,7 +28,10 @@ model = get_model(pretrained=True)
 
 if os.path.exists(WEIGHTS_PATH):
     try:
-        model.load_state_dict(torch.load(WEIGHTS_PATH, map_location=torch.device('cpu')))
+        try:
+            model.load_state_dict(torch.load(WEIGHTS_PATH, map_location=torch.device('cpu'), weights_only=True))
+        except TypeError:
+            model.load_state_dict(torch.load(WEIGHTS_PATH, map_location=torch.device('cpu')))
         print(f"[+] Loaded trained model weights from {WEIGHTS_PATH}")
     except Exception as e:
         print(f"[-] Could not load custom weights: {e}")
@@ -87,50 +90,10 @@ def predict():
             return jsonify({"error": f"Image too large. Maximum allowed size is {MAX_UPLOAD_BYTES // (1024*1024)} MB"}), 413
 
         try:
-            pil_img, input_tensor = preprocess_image_bytes(image_bytes)
-        except Exception:
+            result = predict_image(model, image_bytes, filename=filename)
+            return jsonify(result)
+        except Exception as e:
             return jsonify({"error": "Invalid or corrupted image file. Please upload a valid JPEG, PNG, BMP, or TIFF image."}), 400
-
-        with torch.no_grad():
-            logits, probabilities = model(input_tensor)
-            prob_vec = probabilities[0].tolist()
-
-        prob_real = float(prob_vec[0])
-        prob_fake = float(prob_vec[1])
-
-        ela_img, ela_b64 = compute_ela(pil_img)
-        heatmap_b64 = generate_heatmap_overlay(pil_img, ela_img)
-
-        ela_np = float(np.array(ela_img, dtype=np.float32).mean())
-        
-        is_forged = prob_fake > 0.5 or (prob_fake > 0.40 and ela_np > 20.0)
-        confidence = prob_fake if is_forged else prob_real
-
-        prediction_class = "Forged" if is_forged else "Genuine"
-        vector_label = [0, 1] if is_forged else [1, 0]
-
-        thumb = pil_img.copy()
-        thumb.thumbnail((400, 400))
-        orig_b64 = pil_to_base64(thumb)
-
-        return jsonify({
-            "success": True,
-            "filename": filename,
-            "prediction": prediction_class,
-            "vector": vector_label,
-            "probabilities": {
-                "genuine": round(prob_real * 100, 2),
-                "forged": round(prob_fake * 100, 2)
-            },
-            "confidence": round(confidence * 100, 2),
-            "ela_noise_level": round(ela_np, 2),
-            "dimensions": f"{pil_img.width}x{pil_img.height}",
-            "visualizations": {
-                "original": f"data:image/png;base64,{orig_b64}",
-                "ela": f"data:image/png;base64,{ela_b64}",
-                "heatmap": f"data:image/png;base64,{heatmap_b64}"
-            }
-        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
