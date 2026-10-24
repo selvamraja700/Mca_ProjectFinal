@@ -1,51 +1,3 @@
-"""
-session_manager.py — File-backed server-side session store
-===========================================================
-
-Why this exists
----------------
-Flask's default signed-cookie session stores all data *in the browser cookie*.
-That is fine for small values (theme, last filename) but is unsuitable for
-larger state (e.g. full prediction result payloads — up to ~200 KB of base64
-image data).  This module provides a lightweight *server-side* session store
-backed by JSON files on disk, referenced from the browser cookie by a short
-random token.
-
-Design
-------
-* Each session is a small JSON file in SESSION_STORE_DIR.
-* The browser receives only the session token (a 32-byte hex string) inside
-  the signed Flask cookie.  The actual payload never leaves the server.
-* Expired sessions are cleaned up lazily (on each read) and also explicitly
-  via ``cleanup_expired()``.
-* Thread-safe: uses a ``threading.Lock`` per operation for the in-process
-  write path.  Concurrent processes (not expected for this single-user app)
-  are safe because each file write is atomic (write-then-rename).
-
-Limitations
------------
-* Not suitable for multi-process or multi-server deployments.
-* Session files accumulate until cleaned up; call ``cleanup_expired()``
-  periodically or on startup.
-
-Usage
------
-    from cookie_section.session_manager import SessionManager
-    from cookie_section.cookie_manager import CookieManager
-
-    sm = SessionManager()
-    cm = CookieManager()
-    cm.configure(app)
-
-    # In a Flask route:
-    token = sm.create_session({"last_scan": result})
-    cm.set("session_id", token)
-
-    # On a subsequent request:
-    token = cm.get("session_id")
-    data  = sm.load_session(token)   # None if expired / invalid
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -78,27 +30,15 @@ class SessionManager:
             self._ttl,
         )
 
-    # ------------------------------------------------------------------
-    # CRUD
-    # ------------------------------------------------------------------
-
     def create_session(self, data: dict[str, Any]) -> str:
-        """Persist *data* as a new session file and return the session token.
-
-        The token is a 32-byte hex string (64 characters, 256 bits of
-        entropy) — safe to store in a signed Flask cookie.
-        """
+        """Persist *data* as a new session file and return the session token."""
         token = secrets.token_hex(32)
         self._write(token, data)
         logger.debug("Session created: token=%.8s…", token)
         return token
 
     def load_session(self, token: str) -> dict[str, Any] | None:
-        """Return the session payload for *token*, or ``None`` if it is
-        expired, absent, or tampered.
-
-        Side-effect: deletes the file if expired.
-        """
+        """Return the session payload for *token*, or ``None`` if expired/absent/tampered."""
         if not self._is_valid_token(token):
             logger.warning("load_session: invalid token format rejected.")
             return None
@@ -121,11 +61,7 @@ class SessionManager:
         return envelope.get("data", {})
 
     def update_session(self, token: str, data: dict[str, Any]) -> bool:
-        """Overwrite the payload for an existing *token*.
-
-        Returns ``True`` on success, ``False`` if the session does not exist
-        or has expired.
-        """
+        """Overwrite the payload for an existing *token*. Returns ``True`` on success."""
         if self.load_session(token) is None:
             return False
         self._write(token, data)
@@ -133,10 +69,7 @@ class SessionManager:
         return True
 
     def delete_session(self, token: str) -> bool:
-        """Remove the session file for *token*.
-
-        Returns ``True`` if the file existed and was deleted.
-        """
+        """Remove the session file for *token*. Returns ``True`` if the file existed."""
         if not self._is_valid_token(token):
             return False
         path = self._path_for(token)
@@ -145,10 +78,7 @@ class SessionManager:
         return self._delete_file(path)
 
     def extend_session(self, token: str) -> bool:
-        """Reset the TTL on an existing session (sliding expiry).
-
-        Returns ``True`` on success.
-        """
+        """Reset the TTL on an existing session. Returns ``True`` on success."""
         data = self.load_session(token)
         if data is None:
             return False
@@ -157,19 +87,11 @@ class SessionManager:
         return True
 
     def session_exists(self, token: str) -> bool:
-        """Return ``True`` if the session exists *and* is not yet expired."""
+        """Return ``True`` if the session exists and is not yet expired."""
         return self.load_session(token) is not None
 
-    # ------------------------------------------------------------------
-    # Maintenance
-    # ------------------------------------------------------------------
-
     def cleanup_expired(self) -> int:
-        """Delete all expired session files.
-
-        Returns the number of files deleted.  Call on application startup
-        and/or periodically.
-        """
+        """Delete all expired session files. Returns the number of files deleted."""
         deleted = 0
         now = time.time()
         for path in self._store_dir.glob("sess_*.json"):
@@ -179,7 +101,6 @@ class SessionManager:
                     self._delete_file(path)
                     deleted += 1
             except (json.JSONDecodeError, OSError):
-                # Corrupt file — remove it.
                 self._delete_file(path)
                 deleted += 1
         logger.info("cleanup_expired: removed %d session file(s).", deleted)
@@ -198,10 +119,6 @@ class SessionManager:
                 pass
         return count
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _path_for(self, token: str) -> pathlib.Path:
         return self._store_dir / f"sess_{token}.json"
 
@@ -217,11 +134,11 @@ class SessionManager:
         tmp = target.with_suffix(".tmp")
         with _lock:
             tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-            tmp.replace(target)   # atomic on same filesystem
+            tmp.replace(target)
 
     @staticmethod
     def _delete_file(path: pathlib.Path) -> bool:
-        """Delete *path* and return True.  Caller must confirm existence first."""
+        """Delete *path* and return True. Caller must confirm existence first."""
         try:
             path.unlink()
             return True

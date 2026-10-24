@@ -1,62 +1,3 @@
-"""
-test_cookie_section.py — Complete test suite for cookie_section
-================================================================
-
-Run from the project root with::
-
-    py -3 -m pytest cookie_section/tests/ -v
-
-Or run the file directly::
-
-    py -3 cookie_section/tests/test_cookie_section.py
-
-All tests are self-contained and do NOT require the ML model, dataset,
-or a running Flask server.  Flask's test client is used for route-context
-tests.
-
-Coverage
---------
-1.  CookieManager
-    a. configure() applies all settings to a Flask app
-    b. set/get/delete/clear work within a request context
-    c. record_scan updates all scan fields correctly
-    d. Disallowed keys raise KeyError
-    e. is_session_intact() returns correct booleans
-    f. cookie_attributes_for() reflects live config
-
-2.  SessionManager
-    a. create_session() returns a 64-hex-char token
-    b. load_session() returns stored data
-    c. load_session() returns None for expired sessions
-    d. load_session() returns None for invalid tokens
-    e. update_session() overwrites data
-    f. delete_session() removes the file
-    g. extend_session() resets TTL
-    h. cleanup_expired() removes only expired files
-    i. active_session_count() counts correctly
-    j. Session data is persisted to disk (file actually written)
-
-3.  CacheManager
-    a. make_image_key() is deterministic and includes model version
-    b. Different images produce different keys
-    c. get_prediction() returns None on cold miss
-    d. set_prediction() + get_prediction() round-trip (non-image fields)
-    e. Prediction cache expires after TTL
-    f. LRU eviction fires when max_entries is reached
-    g. invalidate_prediction() removes single entry
-    h. invalidate_all_predictions() clears all
-    i. Static cache set/get round-trip
-    j. Static cache expires after TTL
-    k. purge_expired() removes expired entries from both caches
-    l. stats() reflects hits, misses, eviction counts
-    m. bump_model_version() clears prediction cache and changes key
-
-4.  Integration — no existing files modified
-    a. ML model file is untouched (size check)
-    b. Dataset directory is untouched
-    c. backend/app.py is untouched
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -68,27 +9,16 @@ import tempfile
 import time
 import unittest
 
-# ---------------------------------------------------------------------------
-# Make cookie_section importable when running from the project root or
-# from inside the tests/ directory.
-# ---------------------------------------------------------------------------
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-# ---------------------------------------------------------------------------
-# Flask is required; skip gracefully if not installed.
-# ---------------------------------------------------------------------------
 try:
     from flask import Flask
     _FLASK_AVAILABLE = True
 except ImportError:
     _FLASK_AVAILABLE = False
 
-
-# ============================================================================
-# 1. CookieManager tests
-# ============================================================================
 
 @unittest.skipUnless(_FLASK_AVAILABLE, "Flask not installed")
 class TestCookieManager(unittest.TestCase):
@@ -190,15 +120,10 @@ class TestCookieManager(unittest.TestCase):
                 self.assertIn(key, summary)
 
 
-# ============================================================================
-# 2. SessionManager tests
-# ============================================================================
-
 class TestSessionManager(unittest.TestCase):
 
     def setUp(self) -> None:
         from cookie_section.session_manager import SessionManager
-        # Use a fresh temp directory for each test so tests are isolated.
         self._tmpdir = tempfile.mkdtemp(prefix="sess_test_")
         self.sm = SessionManager(store_dir=self._tmpdir, ttl_seconds=10)
 
@@ -209,7 +134,7 @@ class TestSessionManager(unittest.TestCase):
     def test_create_returns_64_hex_chars(self):
         token = self.sm.create_session({"x": 1})
         self.assertEqual(len(token), 64)
-        int(token, 16)  # raises ValueError if not hex
+        int(token, 16)
 
     def test_create_writes_file_to_disk(self):
         token = self.sm.create_session({"x": 1})
@@ -231,7 +156,7 @@ class TestSessionManager(unittest.TestCase):
         self.assertIsNone(self.sm.load_session("x" * 65))
 
     def test_load_returns_none_for_non_hex_token(self):
-        bad = "z" * 64   # 'z' is not a hex digit
+        bad = "z" * 64
         self.assertIsNone(self.sm.load_session(bad))
 
     def test_load_returns_none_after_expiry(self):
@@ -250,7 +175,7 @@ class TestSessionManager(unittest.TestCase):
         path = pathlib.Path(self._tmpdir) / f"sess_{token}.json"
         self.assertTrue(path.exists())
         time.sleep(1.1)
-        sm_short.load_session(token)   # triggers lazy delete
+        sm_short.load_session(token)
         self.assertFalse(path.exists(), "Expired session file was not deleted.")
 
     def test_update_overwrites_data(self):
@@ -281,11 +206,8 @@ class TestSessionManager(unittest.TestCase):
         ).SessionManager(store_dir=self._tmpdir, ttl_seconds=2)
         token = sm_short.create_session({"k": "v"})
         time.sleep(1.0)
-        sm_short.extend_session(token)   # should reset TTL to 2 s from now
+        sm_short.extend_session(token)
         time.sleep(1.2)
-        # Would have expired (1.0 + 1.2 = 2.2 s > original 2 s TTL)
-        # but extend happened at t=1.0, so new expiry is t=1.0+2.0=3.0 s.
-        # At t=2.2 s the session should still be valid.
         self.assertIsNotNone(sm_short.load_session(token))
 
     def test_session_exists_true_for_live_session(self):
@@ -300,7 +222,7 @@ class TestSessionManager(unittest.TestCase):
             "cookie_section.session_manager", fromlist=["SessionManager"]
         ).SessionManager(store_dir=self._tmpdir, ttl_seconds=1)
         t1 = sm_short.create_session({"stale": True})
-        t2 = self.sm.create_session({"fresh": True})  # 10 s TTL
+        t2 = self.sm.create_session({"fresh": True})
         time.sleep(1.1)
         deleted = self.sm.cleanup_expired()
         self.assertGreaterEqual(deleted, 1)
@@ -325,15 +247,10 @@ class TestSessionManager(unittest.TestCase):
         self.assertEqual(envelope["data"], data)
 
 
-# ============================================================================
-# 3. CacheManager tests
-# ============================================================================
-
 class TestCacheManager(unittest.TestCase):
 
     def setUp(self) -> None:
         from cookie_section.cache_manager import CacheManager
-        # Short TTL so expiry tests don't take long.
         self.cm = CacheManager(
             prediction_ttl=2,
             static_ttl=2,
@@ -354,8 +271,6 @@ class TestCacheManager(unittest.TestCase):
             },
         }
 
-    # --- make_image_key ---
-
     def test_key_is_deterministic(self):
         k1 = self.cm.make_image_key(self.sample_bytes)
         k2 = self.cm.make_image_key(self.sample_bytes)
@@ -372,12 +287,9 @@ class TestCacheManager(unittest.TestCase):
 
     def test_key_contains_sha256_hex(self):
         key = self.cm.make_image_key(self.sample_bytes)
-        # Key format is  <sha256>:<model_version>
         sha_part = key.split(":")[0]
         expected = hashlib.sha256(self.sample_bytes).hexdigest()
         self.assertEqual(sha_part, expected)
-
-    # --- prediction cache ---
 
     def test_get_returns_none_on_cold_miss(self):
         key = self.cm.make_image_key(b"never_seen")
@@ -388,9 +300,7 @@ class TestCacheManager(unittest.TestCase):
         self.cm.set_prediction(key, self.sample_result)
         cached = self.cm.get_prediction(key)
         self.assertIsNotNone(cached)
-        # Visualizations must NOT be cached (memory savings)
         self.assertNotIn("visualizations", cached)
-        # Metadata fields must be present
         self.assertEqual(cached["prediction"], "Genuine")
         self.assertAlmostEqual(cached["confidence"], 92.1)
 
@@ -409,13 +319,10 @@ class TestCacheManager(unittest.TestCase):
 
     def test_lru_eviction_fires(self):
         """When max_prediction_entries is reached, the LRU entry is evicted."""
-        # max_prediction_entries=3 in setUp
         keys = [self.cm.make_image_key(bytes([i])) for i in range(4)]
         for key in keys[:3]:
             self.cm.set_prediction(key, self.sample_result)
-        # Access keys[0] to make it most-recently-used
         self.cm.get_prediction(keys[0])
-        # Insert a 4th entry — should evict keys[1] (LRU)
         self.cm.set_prediction(keys[3], self.sample_result)
         stats = self.cm.stats()
         self.assertGreaterEqual(stats["pred_evictions"], 1)
@@ -439,8 +346,6 @@ class TestCacheManager(unittest.TestCase):
         stats = self.cm.stats()
         self.assertEqual(stats["pred_cache_live_entries"], 0)
 
-    # --- static cache ---
-
     def test_static_get_returns_none_on_miss(self):
         self.assertIsNone(self.cm.get_static("benchmarks"))
 
@@ -462,14 +367,11 @@ class TestCacheManager(unittest.TestCase):
     def test_invalidate_static_false_for_missing(self):
         self.assertFalse(self.cm.invalidate_static("never_set"))
 
-    # --- purge and stats ---
-
     def test_purge_expired_removes_stale_entries(self):
         key1 = self.cm.make_image_key(b"img1")
         self.cm.set_prediction(key1, self.sample_result)
         self.cm.set_static("stale_key", "v", ttl=1)
         time.sleep(1.1)
-        # key1 has 2s TTL so still live; "stale_key" expired
         removed = self.cm.purge_expired()
         self.assertGreaterEqual(removed, 1)
         self.assertIsNotNone(self.cm.get_prediction(key1))
@@ -477,9 +379,9 @@ class TestCacheManager(unittest.TestCase):
 
     def test_stats_tracks_hits_and_misses(self):
         key = self.cm.make_image_key(b"stats_test")
-        self.cm.get_prediction(key)            # miss
+        self.cm.get_prediction(key)
         self.cm.set_prediction(key, self.sample_result)
-        self.cm.get_prediction(key)            # hit
+        self.cm.get_prediction(key)
         s = self.cm.stats()
         self.assertGreaterEqual(s["pred_hits"], 1)
         self.assertGreaterEqual(s["pred_misses"], 1)
@@ -496,30 +398,16 @@ class TestCacheManager(unittest.TestCase):
         key = self.cm.make_image_key(self.sample_bytes)
         self.cm.set_prediction(key, self.sample_result)
         self.cm.bump_model_version("test_model_v2")
-        # Old key is gone
         self.assertIsNone(self.cm.get_prediction(key))
-        # New keys include the new version
         new_key = self.cm.make_image_key(self.sample_bytes)
         self.assertIn("test_model_v2", new_key)
 
 
-# ============================================================================
-# 4. Integration — confirm no existing files were modified
-# ============================================================================
-
 class TestExistingFilesUntouched(unittest.TestCase):
-    """Guard-rail: confirm the new cookie_section code did NOT touch
-    model weights, dataset, or backend/app.py.
+    """Guard-rail: confirm cookie_section code did NOT touch model weights, dataset, or backend/app.py."""
 
-    These tests record expected file sizes and confirm them.  If anything
-    outside cookie_section/ changes, these tests catch it.
-    """
-
-    # Absolute path to project root (two levels up from this file).
     PROJECT = pathlib.Path(__file__).resolve().parent.parent.parent
-
-    # Known size of the deployed weights file (bytes).
-    EXPECTED_WEIGHTS_SIZE = 28_613_366   # densenet_forgery.pth
+    EXPECTED_WEIGHTS_SIZE = 28_613_366
 
     def _path(self, *parts: str) -> pathlib.Path:
         return self.PROJECT.joinpath(*parts)
@@ -540,7 +428,6 @@ class TestExistingFilesUntouched(unittest.TestCase):
         """backend/app.py must not have been touched by cookie_section code."""
         app_py = self._path("backend", "app.py")
         self.assertTrue(app_py.exists(), "backend/app.py not found.")
-        # Verify key landmark strings are still present.
         content = app_py.read_text(encoding="utf-8", errors="replace")
         self.assertIn("from flask import Flask", content)
         self.assertIn("from inference.predictor import predict_image", content)
@@ -554,8 +441,7 @@ class TestExistingFilesUntouched(unittest.TestCase):
         self.assertGreater(len(new_files), 0, "No Python files found in cookie_section/.")
 
     def test_no_cookie_section_imports_in_backend_app(self):
-        """backend/app.py must not already import cookie_section
-        (integration is pending user approval)."""
+        """backend/app.py must not already import cookie_section."""
         app_py = self._path("backend", "app.py")
         content = app_py.read_text(encoding="utf-8", errors="replace")
         self.assertNotIn(
@@ -567,15 +453,10 @@ class TestExistingFilesUntouched(unittest.TestCase):
     def test_dataset_directory_not_deleted(self):
         data_dir = self._path("data")
         if data_dir.exists():
-            # Confirm it's a directory and still has contents.
             self.assertTrue(data_dir.is_dir())
         else:
             self.skipTest("data/ directory not present in project root.")
 
-
-# ============================================================================
-# Entry point
-# ============================================================================
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
